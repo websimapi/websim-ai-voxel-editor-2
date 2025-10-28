@@ -1,0 +1,79 @@
+import * as THREE from 'three';
+
+class VoxelControls {
+    constructor(camera, domElement, world, uiManager) {
+        this.camera = camera;
+        this.domElement = domElement;
+        this.world = world;
+        this.uiManager = uiManager;
+
+        this.raycaster = new THREE.Raycaster();
+        this.pointer = new THREE.Vector2();
+        
+        this.rollOverMesh = this.createRollOverMesh();
+        this.world.scene.add(this.rollOverMesh);
+
+        this.isShiftDown = false;
+
+        this.domElement.addEventListener('pointermove', this.onPointerMove.bind(this), false);
+        this.domElement.addEventListener('pointerdown', this.onPointerDown.bind(this), false);
+        
+        // Prevent OrbitControls from firing on UI clicks
+        const uiPanel = document.getElementById('ui-panel');
+        uiPanel.addEventListener('pointerdown', (event) => event.stopPropagation());
+    }
+
+    createRollOverMesh() {
+        const rollOverGeo = new THREE.BoxGeometry(1, 1, 1);
+        const rollOverMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, opacity: 0.5, transparent: true });
+        const mesh = new THREE.Mesh(rollOverGeo, rollOverMaterial);
+        mesh.visible = false;
+        return mesh;
+    }
+
+    updatePointer(event) {
+        const rect = this.domElement.getBoundingClientRect();
+        this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    }
+
+    onPointerMove(event) {
+        this.updatePointer(event);
+        this.raycaster.setFromCamera(this.pointer, this.camera);
+        
+        const objectsToIntersect = [this.world.groundPlane, ...this.world.voxels.values()];
+        const intersects = this.raycaster.intersectObjects(objectsToIntersect);
+
+        if (intersects.length > 0) {
+            this.rollOverMesh.visible = true;
+            const intersect = intersects[0];
+            const newPos = new THREE.Vector3().copy(intersect.point).add(intersect.face.normal.clone().multiplyScalar(0.5));
+            newPos.divideScalar(1).floor().multiplyScalar(1).addScalar(0.5);
+            this.rollOverMesh.position.copy(newPos);
+        } else {
+            this.rollOverMesh.visible = false;
+        }
+    }
+
+    onPointerDown(event) {
+        this.updatePointer(event);
+        this.raycaster.setFromCamera(this.pointer, this.camera);
+        
+        const objectsToIntersect = [this.world.groundPlane, ...this.world.voxels.values()];
+        const intersects = this.raycaster.intersectObjects(objectsToIntersect);
+        
+        if (intersects.length > 0) {
+            const intersect = intersects[0];
+            const newPos = new THREE.Vector3().copy(intersect.point).add(intersect.face.normal.clone().multiplyScalar(0.5));
+            newPos.divideScalar(1).floor().multiplyScalar(1).addScalar(0.5);
+
+            const activeMaterial = this.uiManager.getActiveMaterial();
+            if (activeMaterial) {
+                this.world.addVoxel(newPos, activeMaterial);
+            }
+        }
+    }
+}
+
+export default VoxelControls;
+
